@@ -5,7 +5,8 @@ import api from '../api/axios';
 import ThemeToggle from '../components/ThemeToggle';
 import ChangePassword from '../components/ChangePassword';
 import ShopToggle from '../components/ShopToggle';
-
+import SalesAnalytics from '../components/SalesAnalytics';
+import AnalyticsPanel from '../components/AnalyticsPanel';
 // ── WhatsApp helpers ───────────────────────────────────────────────────────────
 const WHATSAPP_NUMBER = import.meta.env.VITE_WHATSAPP_NUMBER || '919999999999';
 
@@ -90,6 +91,7 @@ const AdminDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [statusFilter, setStatusFilter] = useState('all');
+  const [orderTypeFilter, setOrderTypeFilter] = useState('all')
   const [adminName, setAdminName] = useState('Admin');
 
   // Menu form state
@@ -200,6 +202,15 @@ const AdminDashboard = () => {
     } catch (_) { toast.error('Failed to update status'); }
   };
 
+  // ── Verify takeaway payment ───────────────────────────────────────────────────
+  const verifyPayment = async (id) => {
+    try {
+      await api.put(`/orders/${id}`, { paymentStatus: 'paid' });
+      setOrders((prev) => prev.map((o) => o._id === id ? { ...o, paymentStatus: 'paid' } : o));
+      toast.success('Payment verified ✅');
+    } catch (_) { toast.error('Failed to verify payment'); }
+  };
+
   // ── Delete order — direct (no WhatsApp) ──────────────────────────────────────
   const deleteOrderDirect = async (order) => {
     setActionLoading(true);
@@ -287,7 +298,9 @@ const AdminDashboard = () => {
 
   // ── Derived values ────────────────────────────────────────────────────────────
   const pendingCount = orders.filter((o) => o.status === 'pending').length;
-  const filteredOrders = statusFilter === 'all' ? orders : orders.filter((o) => o.status === statusFilter);
+  const filteredOrders = orders
+    .filter((o) => statusFilter === 'all' || o.status === statusFilter)
+    .filter((o) => orderTypeFilter === 'all' || (o.orderType || 'dine-in') === orderTypeFilter);
 
   // ── Loading screen ────────────────────────────────────────────────────────────
   if (loading) return (
@@ -382,7 +395,8 @@ const AdminDashboard = () => {
             { id: 'orders', label: 'Orders', badge: pendingCount },
             { id: 'menu', label: 'Menu' },
             { id: 'stats', label: 'Reports' },
-            { id: 'settings', label: '⚙️ Settings' },
+            { id: 'analytics', label: 'Analytics' },
+            { id: 'settings', label: 'Settings' },
           ].map((t) => (
             <button key={t.id} onClick={() => setTab(t.id)}
               className="flex-1 sm:flex-none sm:px-6 py-3.5 text-xs font-black uppercase tracking-widest border-b-2 transition-all relative"
@@ -401,7 +415,7 @@ const AdminDashboard = () => {
       </div>
 
       {/* ── Main Content ───────────────────────────────────────────────────── */}
-      <main className="max-w-4xl mx-auto px-4 py-4 pb-24">
+      <main className="max-w-4xl mx-auto px-4 py-4 pb-24 gap-6">
 
         {/* ══ ORDERS TAB ═════════════════════════════════════════════════════ */}
         {tab === 'orders' && (
@@ -434,6 +448,25 @@ const AdminDashboard = () => {
               )}
             </div>
 
+            {/* Order type filter row */}
+            <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-0.5">
+              {[
+                { id: 'all',      label: 'All Types' },
+                { id: 'dine-in',  label: '🍽️ Dine In' },
+                { id: 'takeaway', label: '🛍️ Takeaway' },
+              ].map((t) => (
+                <button key={t.id} onClick={() => setOrderTypeFilter(t.id)}
+                  className="flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-bold border transition-all"
+                  style={{
+                    background:  orderTypeFilter === t.id ? '#940901' : (document.documentElement.classList.contains('dark') ? '#374151' : 'white'),
+                    color:       orderTypeFilter === t.id ? 'white' : '#6b7280',
+                    borderColor: orderTypeFilter === t.id ? '#940901' : (document.documentElement.classList.contains('dark') ? '#4b5563' : '#e5e7eb'),
+                  }}>
+                  {t.label}
+                </button>
+              ))}
+            </div>
+
             {/* Orders list */}
             {filteredOrders.length === 0 ? (
               <div className={`py-16 text-center ${C.card} rounded-2xl shadow-sm`}>
@@ -452,6 +485,18 @@ const AdminDashboard = () => {
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className={`font-black ${C.text} text-sm`}>{order.customerName}</span>
                       <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: 'rgba(0,123,139,0.1)', color: '#d6993c' }}>{order.tableNumber}</span>
+                      <span
+                        className="text-xs font-black px-2 py-0.5 rounded-full uppercase tracking-wide"
+                        style={{
+                          background: (order.orderType || 'dine-in') === 'takeaway'
+                            ? 'rgba(148,9,1,0.12)' : 'rgba(49,96,61,0.12)',
+                          color: (order.orderType || 'dine-in') === 'takeaway'
+                            ? '#940901' : '#31603D',
+                          border: `1px solid ${(order.orderType || 'dine-in') === 'takeaway' ? '#940901' : '#31603D'}`,
+                        }}
+                      >
+                        {(order.orderType || 'dine-in') === 'takeaway' ? '🛍️ Takeaway' : '🍽️ Dine In'}
+                      </span>
                       <span className={`text-xs font-bold px-2 py-0.5 rounded-full border capitalize ${STATUS_COLORS[order.status]}`}>{STATUS_LABELS[order.status]}</span>
                     </div>
                     <p className={`${C.muted} text-xs mt-1`}>
@@ -474,6 +519,43 @@ const AdminDashboard = () => {
                   ))}
                   {order.note && <p className={`${C.muted} text-xs italic mt-1.5 border-t ${C.border} pt-1.5`}>📝 {order.note}</p>}
                 </div>
+
+                {/* Takeaway — pickup token, UTR, payment method, verify button */}
+                {order.orderType === 'takeaway' && (
+                  <div className={`px-4 pb-3 border-t ${C.border} pt-2 flex flex-wrap gap-2 items-center`}>
+                    {order.pickupToken && (
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-black"
+                        style={{ background: 'rgba(148,9,1,0.1)', color: '#940901', border: '1px solid rgba(148,9,1,0.25)' }}>
+                        🎫 {order.pickupToken}
+                      </span>
+                    )}
+                    {order.utrNumber && (
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold"
+                        style={{ background: 'rgba(0,123,139,0.08)', color: '#007B8B', border: '1px solid rgba(0,123,139,0.2)' }}>
+                        🔗 {order.utrNumber}
+                      </span>
+                    )}
+                    {order.paymentMethod && order.paymentMethod !== 'not_required' && (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold"
+                        style={{ background: 'rgba(214,153,60,0.1)', color: '#b37d2e', border: '1px solid rgba(214,153,60,0.25)' }}>
+                        {order.paymentMethod === 'upi' ? '📱 UPI' : order.paymentMethod === 'debit-card' ? '💳 Debit' : '💳 Credit'}
+                      </span>
+                    )}
+                    {order.paymentStatus === 'pending_verification' && (
+                      <button onClick={() => verifyPayment(order._id)}
+                        className="ml-auto px-3 py-1 rounded-lg text-xs font-black text-white active:scale-95 transition-all"
+                        style={{ background: 'linear-gradient(135deg,#059669,#047857)' }}>
+                        ✓ Verify Payment
+                      </button>
+                    )}
+                    {order.paymentStatus === 'paid' && (
+                      <span className="ml-auto inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold"
+                        style={{ background: 'rgba(5,150,105,0.1)', color: '#059669', border: '1px solid rgba(5,150,105,0.25)' }}>
+                        ✅ Verified
+                      </span>
+                    )}
+                  </div>
+                )}
 
                 {/* Actions */}
                 <div className={`border-t ${C.border} px-4 py-2.5 flex gap-2`}>
@@ -705,6 +787,13 @@ const AdminDashboard = () => {
           </div>
         )}
       </main>
+
+      {/* ══ ANALYTICS TAB ══ */}
+      {tab === 'analytics' && (
+        <div className="space-y-4">
+          <AnalyticsPanel />
+        </div>
+      )}
 
       {/* ══ Menu Item Form Modal ═══════════════════════════════════════════════ */}
       {formOpen && (
